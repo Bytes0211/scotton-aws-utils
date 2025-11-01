@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scotton-aws-utils"
+version = "1.0.0"
+description = "A unified Python package for AWS service operations (S3, Lambda, EC2, IAM, DynamoDB)"
+readme = "README.md"
+authors = [
+    {name = "S Cotton"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+]
+keywords = ["aws", "boto3", "s3", "lambda", "dynamodb", "ec2", "iam"]
+
+dependencies = [
+    "boto3>=1.26.0",
+    "python-dotenv>=0.19.0",
+    "requests>=2.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "moto[dynamodb]>=5.0.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/<username>/scotton-aws-utils"
+Documentation = "https://github.com/<username>/scotton-aws-utils/blob/main/README.md"
+Repository = "https://github.com/<username>/scotton-aws-utils.git"
+Issues = "https://github.com/<username>/scotton-aws-utils/issues"
+
+[tool.setuptools]
+packages = ["scotton_aws_utils"]
+
+[tool.setuptools.package-data]
+scotton_aws_utils = ["py.typed"]
+
+[tool.black]
+line-length = 120
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --strict-markers"
