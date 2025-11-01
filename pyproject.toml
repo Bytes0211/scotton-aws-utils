@@ -45,10 +45,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/<username>/scotton-aws-utils"
-Documentation = "https://github.com/<username>/scotton-aws-utils/blob/main/README.md"
-Repository = "https://github.com/<username>/scotton-aws-utils.git"
-Issues = "https://github.com/<username>/scotton-aws-utils/issues"
+Homepage = "https://github.com/Bytes0211/scotton-aws-utils"
+Documentation = "https://github.com/Bytes0211/scotton-aws-utils/blob/main/README.md"
+Repository = "https://github.com/Bytes0211/scotton-aws-utils.git"
+Issues = "https://github.com/Bytes0211/scotton-aws-utils/issues"
 
 [tool.setuptools]
 packages = ["scotton_aws_utils"]

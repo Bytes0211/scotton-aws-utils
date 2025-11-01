@@ -38,7 +38,7 @@ pip install .
 ### From Git Repository (if published)
 
 ```bash
-pip install git+https://github.com/<username>/scotton-aws-utils.git
+pip install git+https://github.com/Bytes0211/scotton-aws-utils.git
 ```
 
 ## Quick Start
