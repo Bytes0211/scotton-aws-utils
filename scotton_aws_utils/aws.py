@@ -1,5 +1,6 @@
 import uuid
 import json
+import datetime
 import boto3 as boto
 import requests 
 import io 
@@ -15,6 +16,7 @@ class Aws:
         
         Args:
             use_local_dynamodb: If True, connects to DynamoDB at localhost:8000
+            (I think I may need to change the port. that port is used by localstack)
         """
         self._s3_client = None 
         self._s3_resource = None
@@ -26,8 +28,9 @@ class Aws:
         self._dynamodb_client = None
         self._dynamodb_resource = None
         self._use_local_dynamodb = use_local_dynamodb
+        self._logs_client = None
         
-    # Properties for lazy initialization of AWS clients
+     # Properties for lazy initialization of AWS clients
     # lazy initialization Creational Design Pattern that delays the creation of a resource until it’s actually needed
     @property
     def s3_client(self):
@@ -122,6 +125,16 @@ class Aws:
     @dynamodb_resource.setter
     def dynamodb_resource(self, value):
         self._dynamodb_resource = value
+    
+    @property
+    def logs_client(self):
+        if self._logs_client is None:
+            self._logs_client = util.get_logs_client()
+        return self._logs_client
+    
+    @logs_client.setter
+    def logs_client(self, value):
+        self._logs_client = value
 
     def create_bucket_name(self, prefix: str = 'scotton') -> str:
         """Create unique bucket name with UUID suffix."""
@@ -316,12 +329,20 @@ class Aws:
             print(f"❌ Error stopping EC2 instance(s): {err.response['Error']['Code']} - {err.response['Error']['Message']}")
             raise
     
-    def list_ec2s(self) -> None:
-        """List all EC2 instances in account."""
+    def list_ec2s(self, return_data: bool = False) -> list | None:
+        """List all EC2 instances in account.
+        
+        Args:
+            return_data: If True, return list of EC2 instances instead of printing
+            
+        Returns:
+            List of EC2 instance dicts if return_data=True, otherwise None
+        """
         try:
             response = self.ec2_client.describe_instances()
+            instances = []
+            
             if len(response['Reservations']) > 0:
-                print(f"📋 EC2 Instances in account [{len(response['Reservations'])}]:\n")
                 for reservation in response['Reservations']:
                     for instance in reservation['Instances']:
                         instance_name = ''
@@ -331,18 +352,36 @@ class Aws:
                                     instance_name = tag['Value']
                                     break
                         
-                        print(f" - {instance['InstanceId']} ({instance['State']['Name']})")
-                        if instance_name:
-                            print(f"   Name: {instance_name}")
-                        print(f"   Type: {instance['InstanceType']}")
-                        print(f"   Image: {instance['ImageId']}")
-                        if 'PublicIpAddress' in instance:
-                            print(f"   Public IP: {instance['PublicIpAddress']}")
-                        if 'PrivateIpAddress' in instance:
-                            print(f"   Private IP: {instance['PrivateIpAddress']}")
-                        print()
+                        instance_data = {
+                            'instance_id': instance['InstanceId'],
+                            'name': instance_name,
+                            'state': instance['State']['Name'],
+                            'type': instance['InstanceType'],
+                            'image_id': instance['ImageId'],
+                            'public_ip': instance.get('PublicIpAddress', ''),
+                            'private_ip': instance.get('PrivateIpAddress', '')
+                        }
+                        instances.append(instance_data)
+                        
+                        if not return_data:
+                            print(f" - {instance['InstanceId']} ({instance['State']['Name']})")
+                            if instance_name:
+                                print(f"   Name: {instance_name}")
+                            print(f"   Type: {instance['InstanceType']}")
+                            print(f"   Image: {instance['ImageId']}")
+                            if 'PublicIpAddress' in instance:
+                                print(f"   Public IP: {instance['PublicIpAddress']}")
+                            if 'PrivateIpAddress' in instance:
+                                print(f"   Private IP: {instance['PrivateIpAddress']}")
+                            print()
+                
+                if not return_data:
+                    print(f"📋 EC2 Instances in account [{len(instances)}]:\n")
             else:
-                print("📋 No EC2 instances found in account.")
+                if not return_data:
+                    print("📋 No EC2 instances found in account.")
+            
+            return instances if return_data else None
         except ClientError as err:
             print(f"❌ Error listing EC2 instances: {err.response['Error']['Code']} - {err.response['Error']['Message']}")
             raise
@@ -795,4 +834,330 @@ class Aws:
             raise
         except Exception as e:
             print(f"❌ Error during migration: {str(e)}")
+            raise
+    
+    # CloudWatch Logs methods
+    def get_log_groups(self, log_group_prefix: str = None) -> list:
+        """List CloudWatch log groups.
+        
+        Args:
+            log_group_prefix: Optional prefix to filter log groups (e.g., '/aws/rds')
+        
+        Returns:
+            List of log group names
+        """
+        try:
+            log_groups = []
+            params = {}
+            if log_group_prefix:
+                params['logGroupNamePrefix'] = log_group_prefix
+            
+            paginator = self.logs_client.get_paginator('describe_log_groups')
+            for page in paginator.paginate(**params):
+                for group in page.get('logGroups', []):
+                    log_groups.append(group['logGroupName'])
+            
+            print(f"✅ Retrieved {len(log_groups)} log group(s)")
+            return log_groups
+        except ClientError as err:
+            print(f"❌ Error listing log groups: {err.response['Error']['Code']} - {err.response['Error']['Message']}")
+            raise
+    
+    def _get_log_streams_silent(self, log_group_name: str, stream_name_prefix: str = None, max_items: int = 1) -> list:
+        """Internal method to get log streams without printing output.
+        
+        Args:
+            log_group_name: Name of the log group
+            stream_name_prefix: Optional prefix to filter streams
+            max_items: Maximum number of items to retrieve (default 1 for existence check)
+        
+        Returns:
+            List of stream names
+        """
+        try:
+            streams = []
+            params = {'logGroupName': log_group_name, 'limit': max_items}
+            if stream_name_prefix:
+                params['logStreamNamePrefix'] = stream_name_prefix
+            
+            response = self.logs_client.describe_log_streams(**params)
+            for stream in response.get('logStreams', []):
+                streams.append(stream['logStreamName'])
+            
+            return streams
+        except ClientError:
+            return []
+    
+    def get_log_streams(self, log_group_name: str, stream_name_prefix: str = None) -> list:
+        """Get log streams for a log group.
+        
+        Args:
+            log_group_name: Name of the log group
+            stream_name_prefix: Optional prefix to filter streams
+        
+        Returns:
+            List of stream names
+        """
+        try:
+            streams = []
+            params = {'logGroupName': log_group_name}
+            if stream_name_prefix:
+                params['logStreamNamePrefix'] = stream_name_prefix
+            
+            paginator = self.logs_client.get_paginator('describe_log_streams')
+            for page in paginator.paginate(**params):
+                for stream in page.get('logStreams', []):
+                    streams.append(stream['logStreamName'])
+            
+            print(f"✅ Retrieved {len(streams)} stream(s) from log group '{log_group_name}'")
+            return streams
+        except ClientError as err:
+            print(f"❌ Error listing log streams: {err.response['Error']['Code']} - {err.response['Error']['Message']}")
+            raise
+    
+    def get_log_events(self, log_group_name: str, log_stream_name: str, limit: int = 100, 
+                      start_time: int = None, end_time: int = None) -> list: # type: ignore
+        """Retrieve log events from a stream.
+        
+        Args:
+            log_group_name: Name of the log group
+            log_stream_name: Name of the log stream
+            limit: Maximum number of events to return (max 10000)
+            start_time: Start timestamp in milliseconds (optional)
+            end_time: End timestamp in milliseconds (optional)
+        
+        Returns:
+            List of log events
+        """
+        try:
+            params = {
+                'logGroupName': log_group_name,
+                'logStreamName': log_stream_name,
+                'limit': min(limit, 10000)
+            }
+            
+            if start_time:
+                params['startTime'] = start_time
+            if end_time:
+                params['endTime'] = end_time
+            
+            response = self.logs_client.get_log_events(**params)
+            events = response.get('events', [])
+            
+            print(f"✅ Retrieved {len(events)} log event(s) from stream '{log_stream_name}'")
+            return events
+        except ClientError as err:
+            print(f"❌ Error retrieving log events: {err.response['Error']['Code']} - {err.response['Error']['Message']}")
+            raise
+    
+    def filter_log_events(self, log_group_name: str, filter_pattern: str = '', 
+                         log_stream_names: list = None, limit: int = 100, # type: ignore
+                         start_time: int = None, end_time: int = None) -> list: # type: ignore
+        """Search log events across streams with optional filter pattern.
+        
+        Args:
+            log_group_name: Name of the log group
+            filter_pattern: CloudWatch filter pattern (empty string matches all)
+            log_stream_names: Optional list of specific streams to search
+            limit: Maximum number of events to return (max 10000)
+            start_time: Start timestamp in milliseconds (optional)
+            end_time: End timestamp in milliseconds (optional)
+        
+        Returns:
+            List of matching log events
+        """
+        try:
+            params = {
+                'logGroupName': log_group_name,
+                'filterPattern': filter_pattern,
+                'limit': min(limit, 10000)
+            }
+            
+            if log_stream_names:
+                params['logStreamNames'] = log_stream_names
+            if start_time:
+                params['startTime'] = start_time
+            if end_time:
+                params['endTime'] = end_time
+            
+            events = []
+            paginator = self.logs_client.get_paginator('filter_log_events')
+            for page in paginator.paginate(**params):
+                events.extend(page.get('events', []))
+            
+            print(f"✅ Filter search returned {len(events)} matching event(s)")
+            return events
+        except ClientError as err:
+            print(f"❌ Error filtering log events: {err.response['Error']['Code']} - {err.response['Error']['Message']}")
+            raise
+    
+    def tail_logs(self, log_group_name: str, log_stream_name: str = None, filter_pattern: str = '', 
+                 num_events: int = 50, resource_type: str = None) -> None:
+        """Display recent log events (tail functionality).
+        
+        Args:
+            log_group_name: Name of the log group
+            log_stream_name: Optional stream name (if omitted, searches all streams)
+            filter_pattern: Optional filter pattern
+            num_events: Number of recent events to display
+            resource_type: Optional resource type for formatting ('rds-postgres', 'ec2', 's3', 'aurora-postgres')
+        """
+        try:
+            print(f"\n{'='*80}")
+            print(f"📋 CloudWatch Logs: {log_group_name}")
+            if log_stream_name:
+                print(f"Stream: {log_stream_name}")
+            if filter_pattern:
+                print(f"Filter: {filter_pattern}")
+            print(f"{'='*80}\n")
+            
+            if log_stream_name:
+                # Get events from specific stream
+                events = self.get_log_events(log_group_name, log_stream_name, limit=num_events)
+            else:
+                # Search across all streams
+                events = self.filter_log_events(log_group_name, filter_pattern, limit=num_events)
+            
+            if not events:
+                print("📭 No log events found.\n")
+                return
+            
+            # Display events
+            for event in events:
+                timestamp = event.get('timestamp', 0)
+                dt = datetime.datetime.fromtimestamp(timestamp / 1000.0)
+                message = event.get('message', '').strip()
+                
+                print(f"[{dt.isoformat()}] {message}")
+            
+            print(f"\n{'='*80}\n")
+        except ClientError as err:
+            print(f"❌ Error tailing logs: {err.response['Error']['Code']} - {err.response['Error']['Message']}")
+            raise
+    
+    def get_rds_postgres_logs(self, instance_id: str, log_stream_name: str = None, 
+                             num_events: int = 50) -> list:
+        """Get logs for an RDS PostgreSQL instance.
+        
+        Args:
+            instance_id: RDS instance identifier
+            log_stream_name: Optional specific log stream (e.g., 'postgresql')
+            num_events: Number of events to retrieve
+        
+        Returns:
+            List of log events
+        """
+        try:
+            log_group = f'/aws/rds/instance/{instance_id}/postgresql'
+            if log_stream_name:
+                events = self.get_log_events(log_group, log_stream_name, limit=num_events)
+            else:
+                events = self.filter_log_events(log_group, '', limit=num_events)
+            
+            print(f"✅ Retrieved {len(events)} log event(s) from RDS PostgreSQL instance '{instance_id}'")
+            return events
+        except ClientError as err:
+            print(f"❌ Error retrieving RDS PostgreSQL logs: {err.response['Error']['Code']}")
+            raise
+    
+    def get_aurora_postgres_logs(self, cluster_id: str, num_events: int = 50) -> list:
+        """Get logs for an Aurora PostgreSQL cluster.
+        
+        Args:
+            cluster_id: Aurora cluster identifier
+            num_events: Number of events to retrieve
+        
+        Returns:
+            List of log events
+        """
+        try:
+            log_group = f'/aws/rds/cluster/{cluster_id}/aurora-postgresql'
+            events = self.filter_log_events(log_group, '', limit=num_events)
+            
+            print(f"✅ Retrieved {len(events)} log event(s) from Aurora PostgreSQL cluster '{cluster_id}'")
+            return events
+        except ClientError as err:
+            print(f"❌ Error retrieving Aurora PostgreSQL logs: {err.response['Error']['Code']}")
+            raise
+    
+    def get_ec2_logs(self, instance_id: str, log_group_prefix: str = '/aws/ec2', 
+                    num_events: int = 50) -> list:
+        """Get logs for an EC2 instance (if CloudWatch agent is installed).
+        
+        Args:
+            instance_id: EC2 instance ID
+            log_group_prefix: Prefix for EC2 log groups (customizable)
+            num_events: Number of events to retrieve
+        
+        Returns:
+            List of log events
+        """
+        try:
+            # Try to find available log groups for this instance
+            # First, get all log groups with the prefix to find relevant ones
+            all_log_groups = self.get_log_groups(log_group_prefix)
+            
+            if not all_log_groups:
+                print(f"⚠️  No log groups found with prefix '{log_group_prefix}'")
+                print(f"   Ensure CloudWatch agent is installed and configured on the instance.")
+                return []
+            
+            # Find log groups that have log streams matching the instance ID
+            # CloudWatch agent typically creates log streams named with the instance ID
+            instance_log_groups = []
+            
+            for group in all_log_groups:
+                # Check if this log group has streams for our instance (silently)
+                streams = self._get_log_streams_silent(group, stream_name_prefix=instance_id, max_items=1)
+                if streams:
+                    instance_log_groups.append(group)
+            
+            if not instance_log_groups:
+                print(f"⚠️  No log groups found for EC2 instance '{instance_id}' with prefix '{log_group_prefix}'")
+                print(f"   Available log groups: {', '.join(all_log_groups[:5])}{'...' if len(all_log_groups) > 5 else ''}")
+                print(f"   Ensure CloudWatch agent is configured with log streams named by instance ID.")
+                print(f"   You can also manually check log groups for this instance using:")
+                print(f"   aws logs describe-log-streams --log-group-name <log-group-name>")
+                return []
+            
+            print(f"📋 Found {len(instance_log_groups)} log group(s) for instance '{instance_id}': {', '.join(instance_log_groups)}")
+            
+            events = []
+            for group in instance_log_groups:
+                group_events = self.filter_log_events(group, '', limit=num_events)
+                events.extend(group_events)
+            
+            print(f"✅ Retrieved {len(events)} log event(s) from EC2 instance '{instance_id}'")
+            return events
+        except ClientError as err:
+            print(f"❌ Error retrieving EC2 logs: {err.response['Error']['Code']}")
+            raise
+    
+    def get_s3_logs(self, bucket_name: str, num_events: int = 50) -> list:
+        """Get logs for an S3 bucket (if access logging is enabled).
+        
+        Args:
+            bucket_name: S3 bucket name
+            num_events: Number of events to retrieve
+        
+        Returns:
+            List of log events
+        """
+        try:
+            log_group = f'/aws/s3/{bucket_name}'
+            
+            # Check if log group exists
+            log_groups = self.get_log_groups(log_group)
+            
+            if not log_groups:
+                print(f"⚠️  No log group found for S3 bucket '{bucket_name}'")
+                print(f"   Ensure S3 access logging is enabled for this bucket.")
+                return []
+            
+            events = self.filter_log_events(log_group, '', limit=num_events)
+            
+            print(f"✅ Retrieved {len(events)} log event(s) from S3 bucket '{bucket_name}'")
+            return events
+        except ClientError as err:
+            print(f"❌ Error retrieving S3 logs: {err.response['Error']['Code']}")
             raise

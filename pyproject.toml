@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scotton-aws-utils"
-version = "1.0.0"
-description = "A unified Python package for AWS service operations (S3, Lambda, EC2, IAM, DynamoDB)"
+version = "1.1.0"
+description = "A unified Python package for AWS service operations (S3, Lambda, EC2, IAM, DynamoDB, CloudWatch Logs)"
 readme = "README.md"
 authors = [
     {name = "S Cotton"}
@@ -22,11 +22,10 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Systems Administration",
 ]
-keywords = ["aws", "boto3", "s3", "lambda", "dynamodb", "ec2", "iam"]
+keywords = ["aws", "boto3", "s3", "lambda", "dynamodb", "ec2", "iam", "cloudwatch", "logs", "monitoring"]
 
 dependencies = [
     "boto3>=1.26.0",

@@ -91,3 +91,8 @@ def get_dynamodb_resource(local=False, region_name=None, endpoint_url=None):
         params['endpoint_url'] = endpoint_url
     
     return aws.resource('dynamodb', **params)
+
+@lru_cache(maxsize=1)
+def get_logs_client():
+    """Get AWS CloudWatch Logs client."""
+    return aws.client('logs')

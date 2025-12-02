@@ -116,7 +116,7 @@ File: `scotton_aws_utils/__init__.py`
 Scotton AWS Utilities
 =====================
 
-A Python package for AWS service operations including S3, Lambda, EC2, IAM, and DynamoDB.
+A Python package for AWS service operations including S3, Lambda, EC2, IAM, and DynamoDB, and 
 """
 
 __version__ = '1.0.0'

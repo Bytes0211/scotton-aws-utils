@@ -29,5 +29,6 @@ __author__ = 'Scott On'
 from .aws import Aws
 from . import util
 from . import lambdadeployer
+from .ec2_log_retriever import EC2LogRetriever
 
-__all__ = ['Aws', 'util', 'lambdadeployer']
+__all__ = ['Aws', 'util', 'lambdadeployer', 'EC2LogRetriever']

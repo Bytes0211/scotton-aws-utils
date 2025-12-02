@@ -10,6 +10,7 @@ A comprehensive Python package for AWS service operations, providing a unified i
 - **IAM Operations**: Role validation and management
 - **DynamoDB**: Full CRUD operations, queries, scans, batch operations, transactions
 - **Advanced DynamoDB**: Key/Attr condition builders, streams, GSI/LSI support
+- **CloudWatch Logs**: Monitor and retrieve logs from RDS, Aurora, EC2, and S3
 - **Unified Error Handling**: Consistent error handling across all services
 - **Local DynamoDB Support**: Easy testing with DynamoDB Local
 
@@ -76,6 +77,11 @@ items = aws.query_dynamodb(
 # EC2 Operations
 aws.list_ec2s()
 status, instance_ids = aws.create_ec2(image_id='ami-12345678')
+
+# CloudWatch Logs
+log_groups = aws.get_log_groups('/aws/rds')
+events = aws.get_rds_postgres_logs('my-db-instance')
+aws.tail_logs('/aws/rds/instance/my-db/postgresql', num_events=100)
 ```
 
 ## Advanced DynamoDB Features
@@ -151,6 +157,64 @@ items = [
 aws.batch_write_dynamodb('Products', items)
 ```
 
+## CloudWatch Logs Monitoring
+
+### List Log Groups and Streams
+
+```python
+# List all log groups
+all_groups = aws.get_log_groups()
+
+# Filter log groups by prefix
+rds_groups = aws.get_log_groups('/aws/rds')
+ec2_groups = aws.get_log_groups('/aws/ec2')
+
+# Get log streams for a specific group
+streams = aws.get_log_streams('/aws/rds/instance/my-db/postgresql')
+```
+
+### Retrieve Log Events
+
+```python
+# Get recent events from a specific stream
+events = aws.get_log_events(
+    log_group_name='/aws/rds/instance/my-db/postgresql',
+    log_stream_name='postgresql.log.2025-12-01-00',
+    limit=100
+)
+
+# Filter logs with pattern and time range
+events = aws.filter_log_events(
+    log_group_name='/aws/rds/instance/my-db/postgresql',
+    filter_pattern='[ERROR]',
+    start_time=1701388800000,  # milliseconds since epoch
+    limit=500
+)
+
+# Tail logs (display recent events)
+aws.tail_logs(
+    log_group_name='/aws/rds/instance/my-db/postgresql',
+    num_events=50,
+    filter_pattern='ERROR'
+)
+```
+
+### Resource-Specific Log Methods
+
+```python
+# RDS PostgreSQL logs
+events = aws.get_rds_postgres_logs('my-db-instance', num_events=100)
+
+# Aurora PostgreSQL logs
+events = aws.get_aurora_postgres_logs('my-cluster-id', num_events=100)
+
+# EC2 logs (requires CloudWatch agent installed)
+events = aws.get_ec2_logs('i-1234567890abcdef0', num_events=100)
+
+# S3 access logs (requires access logging enabled)
+events = aws.get_s3_logs('my-bucket-name', num_events=100)
+```
+
 ## Local DynamoDB Support
 
 ```python
@@ -172,6 +236,7 @@ s3_client = util.get_s3_client()
 lambda_client = util.get_lambda_client()
 dynamodb_client = util.get_dynamodb_client()
 dynamodb_resource = util.get_dynamodb_resource()
+logs_client = util.get_logs_client()
 
 # With custom region/endpoint
 dynamodb_client = util.get_dynamodb_client(
@@ -275,6 +340,17 @@ Main class for AWS operations with lazy-initialized clients.
 - `list_iam_roles()`: List IAM roles
 - `validate_iam_role(role)`: Validate role exists
 
+**CloudWatch Logs Methods**:
+- `get_log_groups(log_group_prefix)`: List log groups with optional prefix filter
+- `get_log_streams(log_group_name, stream_name_prefix)`: Get streams for a log group
+- `get_log_events(log_group_name, log_stream_name, limit, start_time, end_time)`: Retrieve log events
+- `filter_log_events(log_group_name, filter_pattern, ...)`: Search logs with filter patterns
+- `tail_logs(log_group_name, log_stream_name, filter_pattern, num_events)`: Display recent logs
+- `get_rds_postgres_logs(instance_id, log_stream_name, num_events)`: Get RDS PostgreSQL logs
+- `get_aurora_postgres_logs(cluster_id, num_events)`: Get Aurora PostgreSQL logs
+- `get_ec2_logs(instance_id, log_group_prefix, num_events)`: Get EC2 logs
+- `get_s3_logs(bucket_name, num_events)`: Get S3 access logs
+
 ## Migration Guide
 
 ### From Local aws.py/util.py
@@ -306,6 +382,12 @@ Scott On
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Changelog
+
+### Version 1.1.0 (2025-12-01)
+- Added CloudWatch Logs monitoring support
+- Resource-specific log methods for RDS PostgreSQL, Aurora PostgreSQL, EC2, and S3
+- Log filtering, searching, and tail functionality
+- Pagination support for large log sets
 
 ### Version 1.0.0 (2025-10-31)
 - Initial release
